@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+    "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.iemes.mapper.operation.OperationMapper">
+	<!--mybatis ehcache缓存配置 -->
+	<!-- 以下两个<cache>标签二选一,第一个可以输出日志,第二个不输出日志 <cache type="org.mybatis.caches.ehcache.LoggingEhcache" 
+		/> -->
+	<!-- <cache type="org.mybatis.caches.ehcache.EhcacheCache"/> -->
+	<!-- 以下与实体类的中字段一致 -->
+	
+	<!-- 
+	<resultMap ype="HashMap" id="resultList">
+		<id column="id" property="id"/>
+		<result column="operationName" property="operationName" />
+		<result column="operationDescription" property="operationDescription" />
+		<result column="workcenterId" property="workcenterId" />
+		<result column="siteName" property="siteName" />
+		<result column="resourceId" property="resourceId" />
+		<result column="byUser" property="byUser" />
+		<result column="createTime" property="createTime" />
+		<result column="state" property="state" />
+	</resultMap>
+	 -->
+	
+	<sql id="selectId">
+		  id,
+		  operation_no,
+		  operation_description,
+		  workcenter,
+		  site,
+		  byUser,
+		  createTime,
+		  state,
+		  operation_type,
+		  default_resource,
+		  resoucre_type
+	</sql>
+	<select id="getOperationWhereNoUse" resultType="java.util.HashMap">
+		select 
+		<include refid="selectId"/>
+		 FROM ly_operation op 
+		WHERE op.site = #{site} and op.operation_no NOT IN 
+		  (SELECT rs.operation FROM ly_route_step rs UNION
+			SELECT r.next_operation FROM ly_route_step r)
+	</select>
+</mapper>

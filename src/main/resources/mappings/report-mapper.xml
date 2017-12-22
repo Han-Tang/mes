@@ -1,0 +1,637 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+    "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.iemes.mapper.ReportMapper">
+	<select id="getTestReportData" parameterType="java.util.Map"
+		resultType="java.util.HashMap">
+		SELECT r.item, SUM(r.getnum) getnum, SUM(r.usenum) usenum FROM
+		(
+		SELECT
+		a.`item`, '' getnum, SUM(a.`use_num`) usenum FROM
+		ly_sfc_assembly a
+		<if test="operation!=null">
+			WHERE a.`operation` = #{operation}
+		</if>
+		GROUP BY a.`item`
+		UNION
+		SELECT k.`item`, SUM(k.`receive`) getnum,'' FROM
+		ly_workshop_inventory k GROUP BY k.item
+		)r GROUP BY r.item
+	</select>
+	
+	<select id="getScheduleReportData" parameterType="java.util.Map"
+		resultType="java.util.HashMap">
+		SELECT proDoneNumber.doneNum as 'value',
+		proscrapNumber.scrapNumber AS 'scrapvalue',
+		date_format(proSfcNumByTimeRange.rangeEnd, '%H:%i') as 'name',
+		proSfcNumByTimeRange.rangeDoneNum as 'rangeDoneNum',
+	    (ls.shoporder_numbers - proDoneNumber.doneNum - proscrapNumber.scrapNumber) as 'otvalue',
+		ls.shoporder_numbers as 'all'
+		FROM
+		(select #{scheduler} as shoporderId, timeRange.rangeStart,
+		timeRange.rangeEnd,
+		COUNT(sfcProData.sfc) as rangeDoneNum
+		from
+		(
+		select lss.shoporderId,finish_time,lss.sfc
+		from iemes.ly_shoporder_sfc lss
+		where 1=1
+		and lss.site = #{site}
+		and lss.shoporderId = #{scheduler}
+		and lss.status = 2
+		and lss.finish_time >= CURRENT_DATE
+		)sfcProData
+		right join
+		(
+		select adddate(CURRENT_DATE,interval 0 hour) as
+		rangeStart,adddate(CURRENT_DATE,interval 2 hour) as rangeEnd
+		UNION
+		select adddate(CURRENT_DATE,interval 2 hour) as
+		rangeStart,adddate(CURRENT_DATE,interval 4 hour) as rangeEnd
+		UNION
+		select adddate(CURRENT_DATE,interval 4 hour) as
+		rangeStart,adddate(CURRENT_DATE,interval 6 hour) as rangeEnd
+		UNION
+		select adddate(CURRENT_DATE,interval 6 hour) as
+		rangeStart,adddate(CURRENT_DATE,interval 8 hour) as rangeEnd
+		UNION
+		select adddate(CURRENT_DATE,interval 8 hour) as
+		rangeStart,adddate(CURRENT_DATE,interval 10 hour) as rangeEnd
+		UNION
+		select adddate(CURRENT_DATE,interval 10 hour) as
+		rangeStart,adddate(CURRENT_DATE,interval 12 hour) as rangeEnd
+		UNION
+		select adddate(CURRENT_DATE,interval 12 hour) as
+		rangeStart,adddate(CURRENT_DATE,interval 14 hour) as rangeEnd
+		UNION
+		select adddate(CURRENT_DATE,interval 14 hour) as
+		rangeStart,adddate(CURRENT_DATE,interval 16 hour) as rangeEnd
+		UNION
+		select adddate(CURRENT_DATE,interval 16 hour) as
+		rangeStart,adddate(CURRENT_DATE,interval 18 hour) as rangeEnd
+		UNION
+		select adddate(CURRENT_DATE,interval 18 hour) as
+		rangeStart,adddate(CURRENT_DATE,interval 20 hour) as rangeEnd
+		UNION
+		select adddate(CURRENT_DATE,interval 20 hour) as
+		rangeStart,adddate(CURRENT_DATE,interval 22 hour) as rangeEnd
+		UNION
+		select adddate(CURRENT_DATE,interval 22 hour) as
+		rangeStart,adddate(CURRENT_DATE,interval 24 hour) as rangeEnd
+		)timeRange
+		on sfcProData.finish_time >= timeRange.rangeStart <![CDATA[  AND sfcProData.finish_time < timeRange.rangeEnd  ]]> 
+		group by sfcProData.shoporderId,timeRange.rangeStart ,timeRange.rangeEnd
+		)proSfcNumByTimeRange
+		left join iemes.ly_shoporder ls
+		on proSfcNumByTimeRange.shoporderId = ls.shoporder_no
+		left join
+		(select shoporderId, count(sfc) as doneNum from iemes.ly_shoporder_sfc
+		where 1=1
+		and site = #{site}
+		and shoporderId = #{scheduler}
+		and status = 2
+		group by shoporderId
+		)proDoneNumber
+		on proSfcNumByTimeRange.shoporderId = proDoneNumber.shoporderId
+	   LEFT JOIN
+	    (SELECT
+	      shoporderId,
+	      COUNT(sfc) AS scrapNumber
+	    FROM
+	      iemes.ly_shoporder_sfc
+	    WHERE 1 = 1
+	      AND site = #{site}
+	       AND shoporderId = #{scheduler}
+	       AND STATUS = 3
+	    GROUP BY shoporderId) proscrapNumber
+	    ON proSfcNumByTimeRange.shoporderId = proscrapNumber.shoporderId
+		WHERE 1=1
+		and ls.site = #{site}
+		and ls.shoporder_no = #{scheduler}
+		order by proSfcNumByTimeRange.rangeStart
+	</select>
+	
+	
+	
+	<select id="getShoporderCercle" parameterType="java.util.Map"
+		resultType="java.util.HashMap">
+		SELECT DISTINCT COUNT(ss.`sfc`) 'done',
+		(ls.`shoporder_numbers`- (COUNT(ss.`sfc`)) )'nodown',
+		ls.`shoporder_numbers` 'all'
+		FROM ly_shoporder_sfc ss, `ly_shoporder`
+		ls
+		WHERE 1=1
+		AND ss.`shoporderId` =
+		ls.`shoporder_no`
+		AND ss.`shoporderId`
+		= 'sh003'
+	</select>
+
+	<!-- 产能报表 资源 返回产品物料名称 时间 当天的scf数量（产能） -->
+	<select id="getCapacityReportDataByResource" parameterType="java.util.Map"
+		resultType="java.util.HashMap">
+
+		select * from (
+		select shoporder_item ,fdate, count(sfc) num
+		from
+		(
+		select SFC, date_format(ss.finishTime,'%Y-%m-%d') fdate
+		,so.shoporder_item from
+		ly_sfc_step ss ,ly_operation op
+		,ly_shoporder so
+		where op.default_resource=#{resource}
+		and ss.operation =
+		op.operation_no
+		and ss.site = #{site}
+		and ss.shoporder = so.shoporder_no
+		and so.shoporder_item =#{shoporder_item}
+		and so.site = #{site} )m
+		group
+		by shoporder_item,fdate
+		order by fdate desc)n
+		limit 0,7
+
+	</select>
+
+
+	<!-- 产能报表 产线 -->
+	<select id="getCapacityReportDataByWorkcenterLine"
+		parameterType="java.util.Map" resultType="java.util.HashMap">
+		select * from (
+		select
+		shoporder_item,fdate, count(sfc) num from
+		(
+		select SFC,
+		date_format(ss.finishTime,'%Y-%m-%d') fdate ,so.shoporder_item
+		from
+		ly_sfc_step ss
+		,ly_shoporder so
+		where ss.workcenter = #{workcenter2}
+		and
+		ss.site = #{site}
+		and ss.shoporder = so.shoporder_no
+		and
+		so.shoporder_item = #{shoporder_item}
+		and so.site = #{site} )m
+		group by
+		shoporder_item,fdate
+		order by fdate desc)n
+		limit 0,7
+
+	</select>
+
+	<!-- 产能报表 车间 -->
+	<select id="getCapacityReportDataByWorkcenter" parameterType="java.util.Map"
+		resultType="java.util.HashMap">
+		select * from (
+		select shoporder_item,fdate, count(sfc) num
+		from
+		(
+		select DISTINCT SFC, date_format(ss.finishTime,'%Y-%m-%d') fdate
+		,so.shoporder_item
+		from
+		ly_sfc_step ss
+		,ly_shoporder so
+		,ly_workcenter_relation wr
+		where ss.workcenter = wr.workcenter_child
+		and wr.workcenter = #{workcenter}
+		and ss.site = #{site}
+		and ss.shoporder
+		= so.shoporder_no
+		and so.shoporder_item =#{shoporder_item}
+		and so.site =
+		#{site})m
+		group by shoporder_item,fdate
+		order by fdate desc)n
+		limit 0,7
+
+
+	</select>
+	<!-- 正向追溯报表 产品sfc -->
+	<select id="getForwardTracingReportData" parameterType="java.util.Map"
+		resultType="java.util.HashMap">
+		select so.shoporder_item,li.item_name,
+		li.item_type,
+		st.sfc,
+		sa.item_sfc,
+		sa.create_time,
+		sa.use_num,wr.workcenter,
+		st.workcenter as
+		workcenter_child,
+		lo.default_resource,st.operation,
+		st.byUser
+		from
+		ly_sfc_step st
+		left join ly_operation lo on lo.operation_no =
+		st.operation
+		left join ly_workcenter_relation wr on wr.workcenter_child
+		= st.workcenter
+		,ly_sfc_assembly sa , ly_shoporder_sfc ss
+		left join
+		ly_shoporder so on so.shoporder_no = ss.shoporderID
+		left join ly_item
+		li on li.item_no = so.shoporder_item
+		where ss.sfc = sa.sfc
+		and st.site =
+		#{site}
+		and sa.site = #{site}
+		and ss.site = #{site}
+		and lo.site = #{site}
+		and li.site = #{site}
+		and so.site = #{site}
+		and wr.site = #{site}
+		and
+		st.operation = sa.operation
+		and st.sfc = sa.sfc
+		and st.sfc = #{sfc}
+		order by st.createTime, sa.create_time;
+	</select>
+
+	<!-- 正向追溯报表 产品sfc -->
+	<select id="getSFCData" parameterType="java.util.Map"
+		resultType="java.util.HashMap">
+		select ss.sfc,
+		li.item_no,
+		li.item_name,
+		li.item_desc,
+		li.bom_no,
+		li.item_type,
+		li.create_time,
+		li.by_user,
+		li.site
+		from
+		ly_shoporder_sfc ss
+		left join ly_shoporder so on ss.shoporderId =
+		so.shoporder_no
+		left join ly_item li on so.shoporder_item = li.item_no
+		where ss.site = #{site}
+		and so.site =#{site}
+		and li.site = #{site}
+	</select>
+
+	<select id="getReverseTracingData" parameterType="java.util.Map"
+		resultType="java.util.HashMap">
+		SELECT so.shoporder_item,li.item_name,
+		li.item_type,
+		st.sfc,
+		sa.item_sfc,
+		sa.create_time,
+		sa.use_num,wr.workcenter,
+		st.workcenter,
+		lo.default_resource,
+		st.byUser
+		FROM
+		ly_sfc_step st
+		LEFT JOIN ly_operation
+		lo ON lo.operation_no = st.operation
+		LEFT JOIN ly_workcenter_relation
+		wr ON wr.workcenter_child = st.workcenter
+		,ly_sfc_assembly sa ,
+		ly_shoporder_sfc ss
+		LEFT JOIN ly_shoporder so ON so.shoporder_no =
+		ss.shoporderID
+		LEFT JOIN
+		ly_item li ON li.item_no = so.shoporder_item
+		WHERE ss.sfc = sa.sfc
+		AND st.site = #{site}
+		AND sa.site = #{site}
+		AND
+		ss.site = #{site}
+		AND
+		lo.site = #{site}
+		AND li.site = #{site}
+		AND so.site
+		= #{site}
+		AND wr.site
+		= #{site}
+		AND st.operation = sa.operation
+		AND st.sfc
+		= sa.sfc
+		<if test="reverse!=null">
+			AND sa.item_sfc = #{reverse}
+		</if>
+
+		ORDER BY st.createTime, sa.create_time;
+	</select>
+
+	<select id="getUnqualifiedData" parameterType="java.util.Map"
+		resultType="java.util.HashMap">
+		SELECT distinct sn.sfc,ss.shoporderid,li.item_type
+		,ncg.nc_code_group_desc,nc.nc_code_desc,wo.workcenter_no,lss.workcenter,op.default_resource
+		FROM
+		ly_sfc_nc sn ,
+		ly_shoporder_sfc ss,
+		ly_shoporder so,
+		ly_item li,
+		ly_sfc_step lss,
+		ly_operation op,
+		ly_nc_code nc,
+		ly_nc_code_relation ncr,
+		ly_nc_code_group ncg,
+		ly_workcenter_relation wr,
+		ly_workcenter wo
+		WHERE
+		sn.sfc = ss.sfc
+		AND ss.shoporderid= so.shoporder_no
+		AND
+		so.shoporder_item = li.item_no
+		AND
+		sn.sfc=lss.sfc
+		AND sn.operation =
+		lss.operation
+		AND sn.operation = op.operation_no
+		AND sn.nc_code =
+		ncr.nc_code
+		AND
+		sn.nc_code = nc.nc_code
+		AND ncr.nc_code_group =
+		ncg.nc_code_group_no
+		AND wr.workcenter_child = lss.workcenter
+		AND
+		wr.workcenter =
+		wo.workcenter_no
+		AND sn.site = #{site}
+		<if test="scheduler!=null">
+			AND so.shoporder_no = #{scheduler}
+		</if>
+		<if test="workcenter!=null">
+			AND wo.workcenter_no = #{workcenter} and
+			wo.workcenter_class = 'workshop'
+		</if>
+		<if test="reverse!=null">
+			AND wo.workcenter_no = #{workcenter2} and
+			wo.workcenter_class = 'production_line'
+		</if>
+	</select>
+
+	<select id="getSfcInfoData" parameterType="java.util.Map"
+		resultType="java.util.HashMap">
+		SELECT lsa.id,lsa.`item_sfc`,it.item_no,
+		it.item_name,it.item_desc,it.item_type,lsa.site,lsa.by_user,lsa.create_time
+		FROM `ly_sfc_assembly` lsa
+		LEFT JOIN `ly_item` it ON lsa.`item` =
+		it.`item_no`
+		WHERE it.site = #{site}
+	</select>
+
+	<select id="getTotalInfoData" parameterType="java.util.Map"
+		resultType="java.util.HashMap">
+		SELECT COUNT(1) total FROM ( SELECT
+		ss.shoporderid,ss.sfc,wr.workcenter 'cj',
+		lss.workcenter
+		'cx',op.default_resource FROM ly_shoporder_sfc ss ,ly_sfc_step lss
+		,ly_operation op,ly_workcenter_relation wr
+		WHERE ss.sfc=lss.sfc
+		AND
+		lss.operation = op.operation_no
+		AND lss.workcenter =
+		wr.workcenter_child
+		AND ss.status =2
+		AND finish_time IS NOT NULL) a
+		WHERE cj ='w001'
+	</select>
+	<select id="getWelcomeData" parameterType="java.util.Map"
+		resultType="java.util.HashMap">
+		SELECT lwi.`item` 'name',
+		(IFNULL(SUM(lwi.`receive`),0)-IFNULL(sy.us,0)) 'value' FROM
+		ly_workshop_inventory lwi
+		LEFT JOIN (
+		SELECT lsa.item,
+		SUM(lsa.`use_num`) us FROM ly_sfc_assembly lsa
+		where site = #{site}
+		GROUP BY lsa.`item`
+		) sy
+		ON lwi.`item` = sy.item
+		where lwi.site = #{site}
+		GROUP BY lwi.`item`
+	</select>
+	<select id="getPercentData" parameterType="java.util.Map"
+		resultType="java.util.HashMap">
+		select a.nc_numbers, (shoporder_numbers) as pass_numbers from
+		(SELECT
+		count(distinct sn.sfc) as nc_numbers
+		FROM
+		ly_sfc_nc sn ,
+		ly_shoporder_sfc ss,
+		ly_shoporder so,
+		ly_item li,
+		ly_sfc_step lss,
+		ly_operation op,
+		ly_nc_code nc,
+		ly_nc_code_relation ncr,
+		ly_nc_code_group ncg,
+		ly_workcenter_relation wr,
+		ly_workcenter wo
+		WHERE
+		sn.sfc = ss.sfc
+		AND ss.shoporderid= so.shoporder_no
+		AND
+		so.shoporder_item = li.item_no
+		AND
+		sn.sfc=lss.sfc
+		AND sn.operation =
+		lss.operation
+		AND sn.operation = op.operation_no
+		AND sn.nc_code =
+		ncr.nc_code
+		AND
+		sn.nc_code = nc.nc_code
+		AND ncr.nc_code_group =
+		ncg.nc_code_group_no
+		AND wr.workcenter_child = lss.workcenter
+		<if test="scheduler!=null">
+			AND so.shoporder_no = #{scheduler}
+		</if>
+		<if test="workcenter!=null">
+			AND wo.workcenter_no = #{workcenter} and
+			wo.workcenter_class = 'workshop'
+		</if>
+		<if test="reverse!=null">
+			AND wo.workcenter_no = #{workcenter2} and
+			wo.workcenter_class = 'production_line'
+		</if>
+		AND wr.workcenter = wo.workcenter_no) a,
+		(select shoporder_numbers from
+		ly_shoporder ls where ls.site = #{site} and
+		ls.shoporder_no =
+		#{scheduler}) b
+	</select>
+
+	<select id="getShopOrderAndNcData" parameterType="java.util.Map"
+		resultType="java.util.HashMap">
+		select
+		lso.shoporder_no,lso.shoporder_numbers,count(DISTINCT lsn.sfc) nc
+		from
+		ly_shoporder lso
+		left join ly_shoporder_sfc lsos
+		on lso.shoporder_no =
+		lsos.shoporderId and lsos.site = #{site}
+		LEFT JOIN ly_sfc_nc lsn
+		on
+		lsos.sfc = lsn.sfc and lsn.site = #{site}
+		where
+		lso.site = #{site}
+		GROUP
+		BY lso.shoporder_no
+		order by lso.id
+	</select>
+
+	<select id="getShopOrderAndCompleteData" parameterType="java.util.Map"
+		resultType="java.util.HashMap">
+		select
+		lso.shoporder_no,lso.shoporder_numbers,count(DISTINCT lsos.sfc)
+		complete from ly_shoporder lso
+		left join ly_shoporder_sfc lsos
+		on
+		lso.shoporder_no = lsos.shoporderId and lsos.`status` = 2 and
+		lsos.site = #{site}
+		where lso.site = #{site}
+		GROUP BY lso.shoporder_no
+		order by lso.id
+	</select>
+	
+	<!-- 生产记录报表 ProductionRecordList -->
+	<select id="getProductionRecordListData" parameterType="java.util.Map"
+		resultType="java.util.HashMap">
+		SELECT ls.shoporder_no, lss.sfc,lss.status AS
+		sfcStatus,ls.shoporder_item,ls.process_route,ls.status AS
+		shopOrderStatus,
+		ls.workcenter,ls.workline,ls.create_time,ls.site,ls.by_user
+		FROM iemes.ly_shoporder ls
+		LEFT JOIN
+		iemes.ly_shoporder_sfc lss
+		ON ls.shoporder_no = lss.shoporderId
+		WHERE 1=1
+		and ls.site = #{site}
+		<if test="shoporder != null and shoporder != ''">
+			AND ls.shoporder_no like CONCAT('%', #{shoporder}, '%')
+		</if>
+		<if test="sfc != null and sfc != ''">
+			AND lss.sfc like CONCAT('%', #{sfc}, '%')
+		</if>
+		<if test="start_time != null and start_time != ''">
+			AND ls.create_time >= #{start_time}
+		</if>
+		<if test="end_time != null and end_time != ''">
+			<![CDATA[ AND ls.create_time <= #{end_time}   ]]>
+		</if>
+		<if test="status != null and status != ''">
+			AND ls.status like CONCAT('%', #{status}, '%')
+		</if>
+		<if test="batch != null and batch != ''">
+			AND lss.sfc IN
+			(
+			SELECT DISTINCT(lsa.sfc) FROM iemes.ly_sfc_assembly lsa
+			LEFT JOIN iemes.ly_workshop_inventory lwi ON lsa.item_sfc = lwi.item_sfc
+			WHERE lsa.batch like CONCAT('%', #{batch}, '%')
+			)
+		</if>
+	</select>
+
+	<!-- 生产记录报表 ProductionRecordList_sfc -->
+	<select id="getProductionRecord_sfcListData" parameterType="java.util.Map"
+		resultType="java.util.HashMap">
+		SELECT
+		sfcData.operation_no,sfcData.operation_description,sfcData.operationResource_no,sfcData.sfc,sfcData.shoporder_item,sfcData.shoporder_no,
+		sfcData.stepStatus as
+		stepStatus,sfcData.byUser,sfcData.createTime,sfcData.site,assemblyNum.assemblyNum,
+		ncNum.ncNum from
+		(SELECT
+		lo.operation_no,lo.operation_description,lor.operationResource_no,lsStep.sfc,ls.shoporder_item,ls.shoporder_no,
+		lsStep.status as
+		stepStatus,lsStep.byUser,lsStep.createTime,lsStep.site
+		FROM
+		iemes.ly_sfc_step lsStep
+		LEFT JOIN
+		iemes.ly_operation lo
+		ON
+		lsStep.operation = lo.operation_no
+		LEFT JOIN
+		iemes.ly_operation_resource lor
+		ON lsStep.operation = lor.operation
+		LEFT JOIN
+		iemes.ly_shoporder_sfc lss
+		ON lsStep.sfc = lss.sfc
+		LEFT JOIN
+		iemes.ly_shoporder ls
+		ON lss.shoporderId = ls.shoporder_no
+		WHERE 1=1
+		AND lss.sfc = #{sfc} 
+		AND lss.site = #{site}
+		)sfcData
+		left join
+		(select
+		site,sfc,operation, COUNT(id) as assemblyNum from ly_sfc_assembly
+		where 1=1 AND sfc = #{sfc} AND site = #{site}
+		group by
+		site,sfc,operation) assemblyNum
+		on sfcData.site = assemblyNum.site
+		and
+		sfcData.sfc = assemblyNum.sfc and sfcData.operation_no =
+		assemblyNum.operation
+		left join
+		(select site,sfc,operation, COUNT(id) as
+		ncNum from ly_sfc_nc
+		where 1=1 AND sfc = #{sfc} AND site = #{site}
+		group by site,sfc,operation) ncNum
+		on sfcData.site = ncNum.site and
+		sfcData.sfc = ncNum.sfc and
+		sfcData.operation_no = ncNum.operation
+	</select>
+
+	<!-- 生产记录报表 ProductionRecordList_sfc_assembly -->
+	<select id="getProductionRecord_sfc_assemblyListData"
+		parameterType="java.util.Map" resultType="java.util.HashMap">
+		SELECT
+		DISTINCT
+		lsa.item,li.item_name,li.item_desc,li.item_type,lwi.create_time,lwi.by_user,lsa.item_sfc,lwi.batch
+		FROM iemes.ly_sfc_assembly lsa
+		LEFT JOIN
+		iemes.ly_item li
+		ON lsa.item = li.item_no
+		LEFT JOIN
+		iemes.ly_workshop_inventory lwi
+		ON lsa.item_sfc = lwi.item_sfc
+		WHERE 1=1
+		<if test="operation !=null and operation!=''">
+			AND lsa.operation = #{operation}
+		</if>
+		<if test="sfc != null and sfc != ''">
+			and lsa.sfc = #{sfc}
+		</if>
+		and lsa.site = #{site}
+		
+	</select>
+
+	<!-- 生产记录报表 ProductionRecord_sfc_ncListData -->
+	<select id="getProductionRecord_sfc_ncListData" parameterType="java.util.Map"
+		resultType="java.util.HashMap">
+		SELECT
+		lsn.sfc,lo.operation_description,lor.operationResource_no,lsn.resource,lsn.nc_code,lnc.nc_code_desc,lsn.nc_code_group,
+		lsn.status,lnr.repair_desc,lnr.create_time as handleTime
+		FROM iemes.ly_sfc_nc lsn
+		left join
+		iemes.ly_nc_repair lnr
+		on lsn.repair_id = lnr.id
+		LEFT JOIN
+		iemes.ly_operation_resource lor
+		ON lsn.operation = lor.operation
+		LEFT JOIN
+		iemes.ly_operation lo
+		ON lsn.operation = lo.operation_no
+		LEFT JOIN
+		iemes.ly_nc_code lnc
+		ON lsn.nc_code = lnc.nc_code
+		WHERE 1=1
+		<if test="operation !=null and operation!=''">
+			AND lsn.operation = #{operation}
+		</if>
+		<if test="sfc != null and sfc != ''">
+			and lsn.sfc = #{sfc}
+		</if>
+		and lsn.site = #{site}
+	</select>
+
+
+</mapper>

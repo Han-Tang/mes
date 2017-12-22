@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+    "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.iemes.mapper.WorkShopMapper">
+
+	<sql id="selectId">
+		t1.id,t1.workcenter_no,t1.workcenter_name,t1.workcenter_description,t1.site,t1.byUser,
+		t1.createTime,t1.state,t1.workcenter_class,t1.workcenter_type, t1.workcenter_version
+	</sql>
+	
+	<select id="getParentWorkCenterMap" resultType="com.iemes.entity.WorkCenterFormMap">
+		SELECT <include refid="selectId" />
+		from ly_workcenter t1 , ly_workcenter_relation t2 
+		where t1.workcenter_no = t2.workcenter 
+		and t2.workcenter_child = '${workcenterNo}'
+	</select>
+	
+	<select id="getChildrenWorkCenterMap" resultType="com.iemes.entity.WorkCenterFormMap">
+		SELECT <include refid="selectId" />
+		from ly_workcenter t1 , ly_workcenter_relation t2 
+		where t1.workcenter_no = t2.workcenter_child 
+		and t2.workcenter = '${workcenterNo}'
+	</select>
+	
+</mapper>

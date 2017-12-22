@@ -1,0 +1,27 @@
+.login {
+    height: 260px;
+    width: 260px;
+    padding: 20px;
+    background-color: rgba(0,0,0,0.5);
+    border-radius: 4px;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    margin: -150px 0 0 -150px;
+    z-index: 99;
+}
+
+.login h1 {
+    text-align: center;
+    color: #fff;
+    font-size: 24px;
+    margin-bottom: 20px;
+}
+
+.login_btn {
+    width: 100%;
+}
+
+body{
+	background: url(../images/intro.jpg);
+}    

@@ -1,0 +1,212 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+    "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.iemes.mapper.BaseExtMapper">
+
+	<sql id="selectId">
+		itbr.id, @rowno:=@rowno+1 AS sequence,
+		itbr.item_no,item.`item_name`,item.`item_desc`, itbr.`use_number`,
+		(IFNULL(itbr.use_number,0)-IFNULL(SUM(
+		CASE sa.sfc
+		WHEN #{sfc}
+		THEN
+		sa.use_num
+		ELSE
+		0
+		END
+		),0)) surplus_number
+	</sql>
+
+	<select id="getItemsByShopOrder" parameterType="java.util.Map"
+		resultType="java.util.HashMap">
+		select
+		<include refid="selectId" />
+		FROM ly_item_bom_relation itbr
+		LEFT JOIN ly_item item ON itbr.`item_no`
+		= item.`item_no`
+		LEFT JOIN (SELECT
+		@rowno:=0) r ON 1=1
+		LEFT JOIN
+		ly_sfc_assembly sa ON sa.item =
+		itbr.`item_no`
+		WHERE itbr.`item_bom_no`
+		= (
+		SELECT DISTINCT it.bom_no FROM ly_shoporder so,ly_item it
+		WHERE
+		so.shoporder_item = it.item_no
+		AND so.shoporder_no = #{shoporderNo}
+		AND
+		so.`site` = #{site})
+		AND itbr.`site` = #{site}
+		GROUP BY itbr.`item_no`
+	</select>
+
+	<sql id="selectPodButtonId">
+		id,
+		pod_button_no,
+		pod_button_name,
+		pod_function,
+		pod_icon,
+		site,
+		by_user,
+		create_time
+	</sql>
+
+	<select id="selectOperationPod" resultType="com.iemes.entity.PodButtonFormMap">
+		select
+		<include refid="selectPodButtonId" />
+		from ly_pod_button
+		where ly_pod_button.id
+		in (SELECT pod_button_no FROM
+		ly_operation_pod WHERE
+		operation_no=#{operation_no})
+	</select>
+
+	<!-- 根据工单、站点查找首操作 -->
+	<select id="getFirstOperationByShopOrderAndSite" parameterType="java.util.Map"
+		resultType="java.util.HashMap">
+		SELECT rs.*, ls.* FROM `ly_route_step` rs
+		LEFT JOIN
+		ly_shoporder ls ON ls.`process_route` = rs.`process_route`
+		WHERE
+		rs.`operation` NOT IN (
+		SELECT rss.`next_operation` FROM ly_route_step
+		rss
+		)
+		AND ls.`shoporder_no` =
+		#{shoporder}
+		AND ls.`site` = #{site}
+	</select>
+
+	<!-- 根据sfc 和 site 查询不合格产品 -->
+	<select id="findNCBySFC" parameterType="java.util.Map"
+		resultType="java.util.HashMap">
+		select m.sfc,
+		m.operation,
+		m.nc_code,
+		m.by_user,
+		m.create_time,
+		m.nc_code_group,
+		nc.nc_code_desc,
+		ncg.nc_code_group_desc,
+		ss.shoporderId,
+		ls.shoporder_item,
+		li.item_name,
+		li.item_desc
+		from
+		(select
+		sn.sfc,
+		sn.operation,
+		sn.nc_code,
+		sn.by_user,
+		sn.create_time,
+		ncr.nc_code_group
+		from ly_sfc_nc sn
+		left join ly_nc_code_relation ncr on
+		sn.nc_code = ncr.nc_code
+		where sn.site = #{site}
+		AND sn.status = '0'
+		and ncr.site = #{site}
+		and
+		sn.sfc= #{sfc} )m
+		left join ly_nc_code nc on m.nc_code =
+		nc.nc_code
+		left join
+		ly_nc_code_group ncg on m.nc_code_group =
+		ncg.nc_code_group_no
+		left join
+		ly_shoporder_sfc ss on m.sfc = ss.sfc
+		left join ly_shoporder ls on
+		ss.shoporderId = ls.shoporder_no
+		left join
+		ly_item li on
+		ls.shoporder_item = li.item_no
+		where nc.site = #{site}
+		and
+		ncg.site =
+		#{site}
+		and ss.site = #{site}
+		and ls.site = #{site}
+		and li.site
+		= #{site}
+	</select>
+
+	<!-- 根据sfc查询 车间 产线 操作 nc_code,nc_code_group -->
+	<select id="findNCRepairBySFC" parameterType="java.util.Map"
+		resultType="java.util.HashMap">
+		select
+		sn.sfc,
+		sn.operation,
+		sn.nc_code,
+		ncr.nc_code_group,
+		st.workcenter workcenter_child,
+		st.shoporder,
+		wr.workcenter
+		from
+		ly_sfc_nc sn
+		left join ly_nc_code_relation ncr on sn.nc_code =
+		ncr.nc_code
+		left join ly_sfc_step st on sn.sfc = st.sfc and
+		sn.operation =
+		st.operation
+		left join ly_workcenter_relation wr on
+		wr.workcenter_child = st.workcenter
+		where sn.site = #{site}
+		and
+		sn.sfc=#{sfc}
+		and ncr.site = #{site}
+		and st.site =#{site}
+		and wr.site = #{site}
+	</select>
+
+
+	<!-- 根据站点、考试编号、用户NO查询学生成绩 -->
+	<select id="findScore" parameterType="java.util.Map" resultType="java.util.HashMap">
+		select sum(IFNULL(g.point,0)) score from ly_grade_calculate g
+		where
+		g.exam_no = #{examNo}
+		and by_user = #{user}
+		and g.site= #{site}
+	</select>
+
+	<!-- 获取已接收但未使用的SFC列表 -->
+	<select id="getAssembleSfcList" parameterType="java.util.Map"
+		resultType="java.util.HashMap">
+		SELECT
+		lw.id,lw.item,lw.`item_sfc`,lw.`batch`,lw.receive,lw.`by_user`,lw.`site`,lw.`create_time`
+		FROM `ly_workshop_inventory` lw
+		WHERE lw.`site` = #{site}
+		<if test="itemNo != null and itemNo != '' and itemNo != 'null'">
+			AND lw.item = #{itemNo}
+		</if>
+		AND lw.`item_sfc` NOT IN (
+		SELECT lsa.`item_sfc` FROM `ly_sfc_assembly`
+		lsa
+		WHERE lsa.`site` = #{site}
+		)
+	</select>
+
+	<select id="findPodButtonIdByName" parameterType="java.util.Map"
+		resultType="java.lang.String">
+		select id from ly_pod_button where site = '*'
+		<if test="pod_button_name != null and pod_button_name != '' and pod_button_name != 'null'">
+			AND pod_button_name = #{pod_button_name}
+		</if>
+	</select>
+	
+	
+	<select id="findAllOperationBySfc" parameterType="java.util.Map"
+		resultType="java.util.HashMap">
+		SELECT rs.`operation`  FROM `ly_shoporder_sfc` ss 
+		LEFT JOIN ly_shoporder ls ON ss.`shoporderId` = ls.`shoporder_no`
+		LEFT JOIN ly_route_step rs ON rs.`process_route` = ls.`process_route`
+		WHERE ss.sfc = #{sfc}
+		AND ss.`site` = #{site}
+		UNION 
+		SELECT rs.`next_operation` FROM `ly_shoporder_sfc` ss 
+		LEFT JOIN ly_shoporder ls ON ss.`shoporderId` = ls.`shoporder_no`
+		LEFT JOIN ly_route_step rs ON rs.`process_route` = ls.`process_route`
+		WHERE ss.sfc = #{sfc}
+		AND ss.`site` = #{site}
+	</select>
+</mapper>

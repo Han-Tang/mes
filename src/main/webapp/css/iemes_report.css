@@ -1,0 +1,21 @@
+.report_title {
+	padding-left: 15px;
+	padding-top: 10px;
+	font-size: 20px;
+	font-weight: bold;
+	font-style: oblique;
+	padding-bottom: 10px;
+	background-color: gainsboro;
+}
+
+.panel-body-ext{
+	padding-top: 3px;
+}
+
+.badge.pull-right {
+	background-color: #428bca;
+    float: none !important;
+}
+.badge {
+	padding: 1px 8px !important;
+}

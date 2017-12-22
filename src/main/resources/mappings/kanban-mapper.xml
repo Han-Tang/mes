@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" 
+    "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.iemes.mapper.KanbanMapper">
+
+
+	<!-- 物料编号 item 物料名称 item_name 物料描述 item_desc 接收总数 zs 已用数量 us 剩余数量 kc 库存上限 
+		balance_up 安全库存数 balance_down */ -->
+	<!--查询物料消耗信息 -->
+	<select id="findKanBanData" parameterType="java.util.Map"
+		resultType="java.util.HashMap">
+		SELECT
+		lwi.`item`,
+		li.item_name,
+		li.item_desc,
+		SUM(lwi.`receive`) zs,
+		sy.us,
+		(
+		IFNULL(SUM(lwi.`receive`), 0) - IFNULL(sy.us, 0)
+		) kc,
+		ibr.balance_up,
+		ibr.balance_down
+		FROM
+		ly_workshop_inventory lwi
+		LEFT JOIN (
+		SELECT
+		lsa.item,
+		SUM(lsa.`use_num`) us
+		FROM
+		ly_sfc_assembly lsa
+		WHERE
+		lsa.site = #{site}
+		GROUP BY
+		lsa.`item`
+		) sy ON lwi.`item` = sy.item
+		LEFT JOIN ly_item_bom_relation ibr ON lwi.item = ibr.item_no
+		LEFT JOIN ly_item li ON li.item_no = lwi.item
+		WHERE
+		lwi.site = #{site}
+		AND ibr.site = #{site}
+		AND li.site = #{site}
+		GROUP BY
+		lwi.item
+		UNION ALL
+		(
+		SELECT
+		lwi.item,
+		li.item_name,
+		li.item_desc,
+		SUM(lwi.`receive`) zs,
+		0 us,
+		SUM(lwi.`receive`) kc,
+		ibr.balance_up,
+		ibr.balance_down
+		FROM
+		ly_workshop_inventory lwi
+		LEFT JOIN ly_item li ON li.item_no = lwi.item
+		AND li.site = #{site}
+		LEFT JOIN ly_item_bom_relation ibr ON lwi.item = ibr.item_no
+		AND
+		ibr.site = #{site}
+		WHERE
+		lwi.item NOT IN (
+		SELECT DISTINCT
+		item
+		FROM
+		ly_sfc_assembly
+		)
+		AND  li.site = #{site}
+		AND  li.item_type = 'purchase'
+		GROUP BY
+		lwi.item
+		)
+	</select>
+</mapper>
