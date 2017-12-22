@@ -24,4 +24,5 @@
 
 body{
 	background: url(../images/intro.jpg);
+	background-size: cover;
 }    

@@ -11,7 +11,7 @@
 </head>
 <body>
 	<div class="login">
-	    <h1>IE-MANAGER-登录</h1>
+	    <h1>IE-MES 登录</h1>
 	    <form class="layui-form" method="post" action="./login.shtml">
 	    	<div class="layui-form-item">
 				<input class="layui-input" name="username" placeholder="用户名" lay-verify="required" type="text" autocomplete="off">
